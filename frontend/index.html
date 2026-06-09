@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FoodOptimizer – Tối ưu hóa thực đơn</title>
+  <meta name="description" content="Hệ thống tối ưu hóa thực đơn tuần 5 ngày bằng CP-SAT + Local Search (MPP)">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ═══ HEADER ═══ -->
+  <header class="header" role="banner">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">🍽️</div>
+        <div class="brand-text">
+          <span class="brand-name">FoodOptimizer</span>
+          <span class="brand-tagline">CP-SAT + Local Search · 100 món mẫu</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-primary" id="btn-optimize" type="button">
+          <span aria-hidden="true">⚡</span> Tối ưu hóa (COP)
+        </button>
+        <button class="btn btn-warning" id="btn-autorepair" type="button" disabled>
+          <span aria-hidden="true">🔧</span> Sửa vi phạm (MPP)
+        </button>
+        <button class="btn btn-ghost" id="btn-print" type="button">
+          <span aria-hidden="true">🖨️</span> In
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══ MAIN ═══ -->
+  <div class="layout" role="main">
+
+    <!-- LEFT: Constraint Panel -->
+    <aside class="side-panel" id="constraint-panel" aria-label="Trạng thái ràng buộc">
+      <h2 class="panel-title">Ràng buộc</h2>
+
+      <div class="score-card" id="score-card">
+        <div class="score-circle" id="score-circle">
+          <svg viewBox="0 0 60 60" aria-hidden="true">
+            <circle class="ring-bg" cx="30" cy="30" r="26"/>
+            <circle class="ring-fg" id="ring-fg" cx="30" cy="30" r="26"/>
+          </svg>
+          <span class="score-num" id="score-num">–</span>
+        </div>
+        <div class="score-info">
+          <span class="score-label">Vi phạm</span>
+          <span class="score-status" id="score-status">Chưa kiểm tra</span>
+        </div>
+      </div>
+
+      <ul class="constraint-list" id="constraint-list" role="list">
+        <li class="c-empty">Nhấn <strong>Tối ưu hóa</strong> để bắt đầu</li>
+      </ul>
+    </aside>
+
+    <!-- CENTER: Menu Table -->
+    <section class="menu-section" aria-label="Thực đơn tuần">
+      <!-- Solver Info Bar -->
+      <div class="solver-bar" id="solver-bar" hidden>
+        <span class="solver-status" id="solver-status"></span>
+        <span class="solver-score" id="solver-score"></span>
+        <span class="solver-time" id="solver-time"></span>
+      </div>
+
+      <!-- Legend -->
+      <div class="legend">
+        <span class="leg"><i class="dot dot-M1"></i>Món mặn 1</span>
+        <span class="leg"><i class="dot dot-M2"></i>Món mặn 2</span>
+        <span class="leg"><i class="dot dot-R"></i>Rau</span>
+        <span class="leg"><i class="dot dot-C"></i>Canh</span>
+        <span class="leg"><i class="dot dot-CO"></i>Cơm</span>
+        <span class="leg"><i class="dot dot-Q"></i>Quà chiều</span>
+      </div>
+
+      <!-- Menu Table -->
+      <div class="table-wrap">
+        <table class="menu-table" id="menu-table">
+          <caption class="sr-only">Thực đơn 5 ngày Thứ 2 đến Thứ 6</caption>
+          <thead>
+            <tr>
+              <th class="th-cat" scope="col">Thành phần</th>
+              <th class="th-day" scope="col">Thứ 2</th>
+              <th class="th-day" scope="col">Thứ 3</th>
+              <th class="th-day" scope="col">Thứ 4</th>
+              <th class="th-day" scope="col">Thứ 5</th>
+              <th class="th-day" scope="col">Thứ 6</th>
+            </tr>
+          </thead>
+          <tbody id="menu-body">
+            <tr><td colspan="6" class="empty-cell" id="empty-cell">
+              <div class="empty-content">
+                <span class="empty-icon">🥗</span>
+                <p>Nhấn <strong>Tối ưu hóa (COP)</strong> để sinh thực đơn</p>
+                <p class="empty-sub">Solver sẽ tự động thỏa mãn tất cả ràng buộc</p>
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- RIGHT: Stats Panel -->
+    <aside class="side-panel stats-r" id="stats-panel" aria-label="Thống kê">
+      <h2 class="panel-title">Thống kê</h2>
+      <div id="stats-body">
+        <p class="c-empty">Chưa có thực đơn</p>
+      </div>
+      <div class="data-info" id="data-info">
+        <h3 class="data-title">Dữ liệu</h3>
+        <dl id="data-dl" class="data-dl"></dl>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ═══ MODAL: Dish Swap ═══ -->
+  <div class="modal-bg" id="modal-bg" hidden role="dialog"
+       aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-box">
+      <div class="modal-top">
+        <h2 class="modal-title" id="modal-title">Thay thế món ăn</h2>
+        <button class="modal-x" id="modal-close" type="button" aria-label="Đóng">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-current-wrap"></div>
+        <p class="alt-heading">Các lựa chọn thay thế hợp lệ:</p>
+        <div class="alt-loading" id="alt-loading" hidden>
+          <span class="spinner" aria-hidden="true"></span> Đang tìm kiếm...
+        </div>
+        <div id="alt-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TOAST ═══ -->
+  <div id="toast-area" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

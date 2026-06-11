@@ -1,55 +1,58 @@
 /**
  * FoodOptimizer · frontend/app.js
- * Gọi API backend, render thực đơn, xử lý Local Repair
+ * Gọi API backend, render thực đơn tháng, xử lý Local Repair
  * Tuân thủ secure coding: không dùng innerHTML với dữ liệu untrusted,
  * sử dụng textContent và createElement để build DOM.
  */
 'use strict';
 
 // ─── Config ─────────────────────────────────────────────────────────────────
-const API_BASE = '';   // Cùng origin với backend (FastAPI serve frontend)
+const API_BASE = '';   // Cùng origin với backend
 
+const WEEKS = ['w1', 'w2', 'w3', 'w4'];
 const DAYS  = ['mon', 'tue', 'wed', 'thu', 'fri'];
 const SLOTS = ['M1', 'M2', 'R', 'C', 'CO', 'Q'];
 
-const DAY_LABELS  = { mon:'Thứ 2', tue:'Thứ 3', wed:'Thứ 4', thu:'Thứ 5', fri:'Thứ 6' };
-const SLOT_LABELS = { M1:'Món mặn 1', M2:'Món mặn 2', R:'Món rau', C:'Món canh', CO:'Cơm', Q:'Quà chiều' };
+const WEEK_LABELS = { w1: 'Tuần 1', w2: 'Tuần 2', w3: 'Tuần 3', w4: 'Tuần 4' };
+const DAY_LABELS  = { mon: 'Thứ 2', tue: 'Thứ 3', wed: 'Thứ 4', thu: 'Thứ 5', fri: 'Thứ 6' };
+const SLOT_LABELS = { M1: 'Món mặn 1', M2: 'Món mặn 2', R: 'Món rau', C: 'Món canh', CO: 'Cơm', Q: 'Quà chiều' };
 
 // ─── App State ───────────────────────────────────────────────────────────────
 const STATE = {
-  menu:       null,   // WeekMenu từ API
-  violations: [],     // Violation[]
-  score:      0,
-  solverInfo: null,
-  dataStats:  null,
-  pendingRepair: null, // {day, slot} đang chờ modal
+  menu:          null,   // MonthMenu { w1, w2, w3, w4 } từ API
+  violations:    [],     // Violation[] (tất cả tuần, tagged với week)
+  score:         0,
+  solverInfo:    null,
+  dataStats:     null,
+  pendingRepair: null,   // { week, day, slot }
+  activeWeek:    'w1',
 };
 
 // ─── DOM refs ────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
 const el = {
-  btnOptimize:   $('btn-optimize'),
-  btnAutorepair: $('btn-autorepair'),
-  btnPrint:      $('btn-print'),
-  menuBody:      $('menu-body'),
+  btnOptimize:    $('btn-optimize'),
+  btnAutorepair:  $('btn-autorepair'),
+  btnPrint:       $('btn-print'),
+  menuBody:       $('menu-body'),
   constraintList: $('constraint-list'),
-  scoreNum:      $('score-num'),
-  scoreStatus:   $('score-status'),
-  ringFg:        $('ring-fg'),
-  solverBar:     $('solver-bar'),
-  solverStatus:  $('solver-status'),
-  solverScore:   $('solver-score'),
-  solverTime:    $('solver-time'),
-  statsBody:     $('stats-body'),
-  dataDl:        $('data-dl'),
-  modalBg:       $('modal-bg'),
-  modalClose:    $('modal-close'),
-  modalTitle:    $('modal-title'),
-  modalCurWrap:  $('modal-current-wrap'),
-  altLoading:    $('alt-loading'),
-  altList:       $('alt-list'),
-  toastArea:     $('toast-area'),
+  scoreNum:       $('score-num'),
+  scoreStatus:    $('score-status'),
+  ringFg:         $('ring-fg'),
+  solverBar:      $('solver-bar'),
+  solverStatus:   $('solver-status'),
+  solverScore:    $('solver-score'),
+  solverTime:     $('solver-time'),
+  statsBody:      $('stats-body'),
+  dataDl:         $('data-dl'),
+  modalBg:        $('modal-bg'),
+  modalClose:     $('modal-close'),
+  modalTitle:     $('modal-title'),
+  modalCurWrap:   $('modal-current-wrap'),
+  altLoading:     $('alt-loading'),
+  altList:        $('alt-list'),
+  toastArea:      $('toast-area'),
 };
 
 // ─── API Helpers ─────────────────────────────────────────────────────────────
@@ -73,36 +76,53 @@ async function apiGet(path) {
   return res.json();
 }
 
+// ─── Settings ────────────────────────────────────────────────────────────────
+
+function getSettings() {
+  return {
+    ruleSet: parseInt($('rule-set-select')?.value) || 1,
+    nWeeks:  parseInt($('n-weeks-select')?.value)  || 4,
+    timeout: parseFloat($('timeout-select')?.value) || 20,
+  };
+}
+
 // ─── Optimize ────────────────────────────────────────────────────────────────
 
 async function runOptimize() {
+  const { ruleSet, nWeeks, timeout } = getSettings();
+
   el.btnOptimize.disabled = true;
   el.btnOptimize.textContent = '⚡ Đang giải...';
   showToast('Đang chạy CP-SAT solver...', 'info');
 
   try {
     const data = await apiPost('/api/optimize', {
-      timeout_seconds: 5,
-      allow_dish_repeat: false,
+      timeout_seconds:   timeout,
+      allow_dish_repeat: true,
+      rule_set:          ruleSet,
+      n_weeks:           nWeeks,
     });
 
     STATE.menu       = data.menu;
     STATE.violations = data.violations;
     STATE.score      = data.score;
     STATE.solverInfo = { status: data.status, time_ms: data.solve_time_ms, stats: data.stats };
+    STATE.activeWeek = 'w1';
 
+    renderWeekTabs();
     renderMenu();
     renderConstraints();
     renderSolverBar();
     renderStats();
 
-    el.btnAutorepair.disabled = STATE.violations.filter(v => v.severity === 'error').length === 0;
-
     const errCount = STATE.violations.filter(v => v.severity === 'error').length;
+    el.btnAutorepair.disabled  = errCount === 0;
+    el.btnAutorepair.textContent = '🔧 Sửa tuần này (MPP)';
+
     if (errCount === 0) {
       showToast(`✅ Tối ưu thành công! Score: ${data.score}`, 'ok');
     } else {
-      showToast(`⚠️ ${errCount} vi phạm còn lại – thử "Sửa vi phạm"`, 'warn');
+      showToast(`⚠️ ${errCount} vi phạm còn lại – thử "Sửa tuần này"`, 'warn');
     }
   } catch (e) {
     showToast('❌ Lỗi: ' + e.message, 'error');
@@ -115,73 +135,82 @@ async function runOptimize() {
 // ─── Auto Repair ─────────────────────────────────────────────────────────────
 
 async function runAutoRepair() {
-  if (!STATE.menu) return;
+  const weekKey = STATE.activeWeek;
+  if (!STATE.menu?.[weekKey]) return;
+
   el.btnAutorepair.disabled = true;
   el.btnAutorepair.textContent = '🔧 Đang sửa...';
-  showToast('Đang chạy Local Search (MPP)...', 'info');
+  showToast(`Đang sửa ${WEEK_LABELS[weekKey]}...`, 'info');
 
   try {
     const data = await apiPost('/api/auto-repair', {
-      menu: STATE.menu,
+      menu: STATE.menu[weekKey],
       max_iterations: 20,
     });
 
-    STATE.menu       = data.menu;
-    STATE.violations = await validateMenu();
+    // Cập nhật tuần đang sửa trong MonthMenu
+    STATE.menu = { ...STATE.menu, [weekKey]: data.menu };
 
+    // Re-validate tuần vừa sửa; giữ nguyên vi phạm của tuần khác
+    const weekViolations = await validateWeek(weekKey);
+    STATE.violations = [
+      ...STATE.violations.filter(v => v.week !== weekKey),
+      ...weekViolations,
+    ];
+
+    renderWeekTabs();
     renderMenu(data.changes);
     renderConstraints();
+    renderStats();
 
     const fixed = data.violations_before - data.violations_after;
+    const totalErr = STATE.violations.filter(v => v.severity === 'error').length;
     showToast(
-      `🔧 MPP: sửa ${fixed} vi phạm, ${data.changes.length} món thay đổi`,
+      `🔧 ${WEEK_LABELS[weekKey]}: sửa ${fixed} vi phạm, ${data.changes.length} món đổi`,
       data.violations_after === 0 ? 'ok' : 'warn',
     );
 
-    el.btnAutorepair.disabled = data.violations_after === 0;
+    el.btnAutorepair.disabled = totalErr === 0;
   } catch (e) {
     showToast('❌ Lỗi: ' + e.message, 'error');
   } finally {
-    if (!el.btnAutorepair.disabled)
-      el.btnAutorepair.textContent = '🔧 Sửa vi phạm (MPP)';
+    el.btnAutorepair.textContent = '🔧 Sửa tuần này (MPP)';
   }
 }
 
-async function validateMenu() {
+// ─── Validate ────────────────────────────────────────────────────────────────
+
+async function validateWeek(weekKey) {
+  const weekMenu = STATE.menu?.[weekKey];
+  if (!weekMenu) return [];
   try {
-    const data = await apiPost('/api/validate', { menu: STATE.menu });
-    STATE.score = data.score;
-    return data.violations;
-  } catch { return STATE.violations; }
+    const data = await apiPost('/api/validate', { menu: weekMenu });
+    return (data.violations || []).map(v => ({ ...v, week: weekKey }));
+  } catch { return []; }
 }
 
 // ─── Repair (single slot) ────────────────────────────────────────────────────
 
-async function openRepairModal(day, slot) {
-  STATE.pendingRepair = { day, slot };
+async function openRepairModal(week, day, slot) {
+  STATE.pendingRepair = { week, day, slot };
 
-  // Modal open
-  el.modalTitle.textContent = `Thay thế: ${SLOT_LABELS[slot]} · ${DAY_LABELS[day]}`;
+  el.modalTitle.textContent =
+    `Thay thế: ${SLOT_LABELS[slot]} · ${DAY_LABELS[day]} · ${WEEK_LABELS[week]}`;
   el.modalBg.hidden = false;
   document.body.style.overflow = 'hidden';
 
-  // Current dish
-  const dayMenu = STATE.menu?.[day];
-  const cur = dayMenu?.[slot];
+  const weekMenu = STATE.menu?.[week];
+  const cur = weekMenu?.[day]?.[slot];
   el.modalCurWrap.replaceChildren();
-  if (cur) {
-    const card = buildCurrentCard(cur, slot);
-    el.modalCurWrap.appendChild(card);
-  }
+  if (cur) el.modalCurWrap.appendChild(buildCurrentCard(cur, slot));
 
-  // Load alternatives
   el.altList.replaceChildren();
   el.altLoading.hidden = false;
 
   try {
-    const data = await apiPost('/api/repair', { menu: STATE.menu, day, slot });
+    const data = await apiPost('/api/repair', { menu: weekMenu, day, slot });
     el.altLoading.hidden = true;
-    renderAlternatives(data.alternatives, day, slot);
+    renderAlternatives(data.alternatives, week, day, slot);
   } catch (e) {
     el.altLoading.hidden = true;
     const p = document.createElement('p');
@@ -197,21 +226,62 @@ function closeModal() {
   STATE.pendingRepair = null;
 }
 
-async function applyAlternative(altDish, day, slot) {
+async function applyAlternative(altDish, week, day, slot) {
   closeModal();
 
   // Cập nhật state
-  if (!STATE.menu[day]) STATE.menu[day] = {};
-  STATE.menu[day][slot] = altDish;
+  if (!STATE.menu[week]) STATE.menu[week] = {};
+  if (!STATE.menu[week][day]) STATE.menu[week][day] = {};
+  STATE.menu[week][day][slot] = altDish;
 
-  // Re-validate
-  STATE.violations = await validateMenu();
+  // Re-validate tuần bị ảnh hưởng; giữ vi phạm tuần khác + vi phạm tháng (week=null)
+  const weekViolations = await validateWeek(week);
+  STATE.violations = [
+    ...STATE.violations.filter(v => v.week !== week),
+    ...weekViolations,
+  ];
+
+  renderWeekTabs();
   renderMenu();
   renderConstraints();
   renderStats();
 
-  el.btnAutorepair.disabled = STATE.violations.filter(v => v.severity === 'error').length === 0;
+  const totalErr = STATE.violations.filter(v => v.severity === 'error').length;
+  el.btnAutorepair.disabled = totalErr === 0;
   showToast(`✅ Đã thay thế: ${altDish.name}`, 'ok');
+}
+
+// ─── Render Week Tabs ─────────────────────────────────────────────────────────
+
+function renderWeekTabs() {
+  WEEKS.forEach(wk => {
+    const btn = document.querySelector(`.week-tab[data-week="${wk}"]`);
+    if (!btn) return;
+
+    const hasData = !!(STATE.menu?.[wk]);
+    btn.disabled = !hasData;
+    btn.classList.toggle('active', wk === STATE.activeWeek);
+
+    // Badge lỗi
+    btn.querySelector('.week-tab-badge')?.remove();
+    if (hasData) {
+      const errCount = STATE.violations.filter(
+        v => v.week === wk && v.severity === 'error'
+      ).length;
+      if (errCount > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'week-tab-badge';
+        badge.textContent = String(errCount);
+        btn.appendChild(badge);
+      }
+    }
+  });
+}
+
+function switchWeek(weekKey) {
+  STATE.activeWeek = weekKey;
+  renderWeekTabs();
+  renderMenu();
 }
 
 // ─── Render Menu ─────────────────────────────────────────────────────────────
@@ -219,43 +289,42 @@ async function applyAlternative(altDish, day, slot) {
 function renderMenu(changes = []) {
   if (!STATE.menu) return;
 
-  // Build set of violated (day, slot)
+  const weekMenu = STATE.menu[STATE.activeWeek];
+  if (!weekMenu) return;
+
+  // Vi phạm của tuần đang hiển thị
   const violatedSet = new Set();
-  STATE.violations.forEach(v => {
-    if (v.day && v.slot) violatedSet.add(`${v.day}:${v.slot}`);
-    if (v.day && v.slot && v.slot.includes(',')) {
-      v.slot.split(',').forEach(s => violatedSet.add(`${v.day}:${s.trim()}`));
-    }
-  });
+  STATE.violations
+    .filter(v => !v.week || v.week === STATE.activeWeek)
+    .forEach(v => {
+      if (v.day && v.slot) violatedSet.add(`${v.day}:${v.slot}`);
+    });
 
-  // Build set of changed slots (for highlight)
   const changedSet = new Set(changes.map(c => `${c.day}:${c.slot}`));
-
   const tbody = el.menuBody;
-  tbody.replaceChildren();  // Xóa nội dung cũ (safe, không dùng innerHTML)
+  tbody.replaceChildren();
 
   SLOTS.forEach(slot => {
     const tr = document.createElement('tr');
 
-    // Category label cell
+    // Cột nhãn loại món
     const tdCat = document.createElement('td');
     tdCat.className = 'td-cat';
     tdCat.setAttribute('scope', 'row');
     const bar = document.createElement('span');
-    bar.className = `cat-bar`;
+    bar.className = 'cat-bar';
     bar.style.background = getCatColor(slot);
     bar.setAttribute('aria-hidden', 'true');
     tdCat.appendChild(bar);
     tdCat.appendChild(document.createTextNode(SLOT_LABELS[slot]));
     tr.appendChild(tdCat);
 
-    // Dish cells
+    // Cột từng ngày
     DAYS.forEach(day => {
       const td = document.createElement('td');
       td.className = 'td-dish';
 
-      const dayMenu = STATE.menu[day];
-      const dish = dayMenu?.[slot];
+      const dish = weekMenu[day]?.[slot];
       if (dish) {
         const key = `${day}:${slot}`;
         const card = buildDishCard(dish, slot, day,
@@ -287,25 +356,21 @@ function buildDishCard(dish, slot, day, violated, changed) {
   card.setAttribute('aria-label', `${dish.name} – nhấn để thay thế`);
   if (changed) card.style.outline = '2px solid rgba(108,99,255,.6)';
 
-  // Edit hint
   const hint = document.createElement('span');
   hint.className = 'edit-hint';
   hint.setAttribute('aria-hidden', 'true');
   hint.textContent = '✏️';
   card.appendChild(hint);
 
-  // Dish name (safe – textContent)
   const nameEl = document.createElement('span');
   nameEl.className = 'dish-name';
-  nameEl.textContent = dish.name;
+  nameEl.textContent = dish.name;   // safe: textContent
   card.appendChild(nameEl);
 
-  // Tags
   const tagsEl = buildTags(dish, violated);
   card.appendChild(tagsEl);
 
-  // Click / Enter to repair
-  const onClick = () => openRepairModal(day, slot);
+  const onClick = () => openRepairModal(STATE.activeWeek, day, slot);
   card.addEventListener('click', onClick);
   card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') onClick(); });
 
@@ -323,15 +388,15 @@ function buildTags(dish, violated) {
     wrap.appendChild(t);
   };
 
-  if (dish.is_fried)    addTag('Chiên', 'tag-fried');
-  if (dish.is_vien)     addTag('Viên',  'tag-vien');
-  if (dish.has_fish)    addTag('Cá',    'tag-fish');
-  if (dish.has_shrimp)  addTag('Tôm',   'tag-shrimp');
-  if (dish.has_egg)     addTag('Trứng', 'tag-egg');
-  if (dish.has_beef)    addTag('Bò',    'tag-beef');
-  if (dish.has_milk)    addTag('Sữa',   'tag-milk');
-  if (dish.preferred)   addTag('★',     'tag-pref');
-  if (violated)         addTag('⚠',     'tag-err');
+  if (dish.is_fried)   addTag('Chiên', 'tag-fried');
+  if (dish.is_vien)    addTag('Viên',  'tag-vien');
+  if (dish.has_fish)   addTag('Cá',    'tag-fish');
+  if (dish.has_shrimp) addTag('Tôm',   'tag-shrimp');
+  if (dish.has_egg)    addTag('Trứng', 'tag-egg');
+  if (dish.has_beef)   addTag('Bò',    'tag-beef');
+  if (dish.has_milk)   addTag('Sữa',   'tag-milk');
+  if (dish.preferred)  addTag('★',     'tag-pref');
+  if (violated)        addTag('⚠',     'tag-err');
 
   return wrap;
 }
@@ -346,12 +411,12 @@ function renderConstraints() {
   const warnings = STATE.violations.filter(v => v.severity === 'warning');
   const total    = errors.length;
 
-  // Score ring
+  // Score ring (max 20 lỗi = 4 tuần × 5 ngày)
   const circumference = 163.4;
-  const maxViols = 11;
+  const maxViols = 20;
   const ratio = Math.max(0, 1 - total / maxViols);
   el.ringFg.style.strokeDashoffset = circumference * (1 - ratio);
-  el.ringFg.style.stroke = total === 0 ? 'var(--ok)' : total <= 2 ? 'var(--warn)' : 'var(--err)';
+  el.ringFg.style.stroke = total === 0 ? 'var(--ok)' : total <= 4 ? 'var(--warn)' : 'var(--err)';
 
   el.scoreNum.textContent    = total === 0 ? '✓' : String(total);
   el.scoreStatus.textContent = total === 0 ? 'Hợp lệ' : `${total} lỗi`;
@@ -366,6 +431,7 @@ function renderConstraints() {
     txt.textContent = 'Tất cả ràng buộc đã thỏa mãn';
     li.appendChild(icon); li.appendChild(txt);
     list.appendChild(li);
+    return;
   }
 
   [...errors, ...warnings].forEach(v => {
@@ -378,7 +444,8 @@ function renderConstraints() {
     icon.textContent = v.severity === 'error' ? '❌' : '⚠️';
 
     const txt = document.createElement('span');
-    txt.textContent = v.message;
+    const weekPrefix = v.week ? `[${WEEK_LABELS[v.week]}] ` : '';
+    txt.textContent = weekPrefix + v.message;   // safe: textContent
 
     li.appendChild(icon);
     li.appendChild(txt);
@@ -393,7 +460,11 @@ function renderSolverBar() {
   if (!info) return;
   el.solverBar.hidden = false;
 
-  const statusMap = { optimal: '🏆 Tối ưu toàn cục', feasible: '✅ Nghiệm hợp lệ', timeout: '⏱ Timeout' };
+  const statusMap = {
+    optimal: '🏆 Tối ưu toàn cục',
+    feasible: '✅ Nghiệm hợp lệ',
+    timeout: '⏱ Timeout',
+  };
   el.solverStatus.textContent = statusMap[info.status] || info.status;
   el.solverScore.textContent  = `Score: ${STATE.score}`;
   el.solverTime.textContent   = `Thời gian giải: ${info.time_ms} ms`;
@@ -414,14 +485,21 @@ function renderStats() {
     return;
   }
 
+  const comRangText = info.com_rang_weeks?.length > 0
+    ? info.com_rang_weeks.map(w => WEEK_LABELS[w]).join(', ')
+    : '—';
+  const comGaText = info.com_ga_weeks?.length > 0
+    ? info.com_ga_weeks.map(w => WEEK_LABELS[w]).join(', ')
+    : '—';
+
   const rows = [
     ['Điểm preference', `${STATE.score}`, 'stat-badge'],
-    ['Món viên/tuần', `${info.vien_count}/1`],
-    ['Thịt bò',   info.beef_used ? '1 bữa' : 'Không dùng'],
-    ['Tôm',       info.shrimp_used ? '1 bữa' : 'Không dùng'],
-    ['Cơm rang',  info.com_rang_days?.length > 0 ? info.com_rang_days.map(d => DAY_LABELS[d]).join(', ') : '—'],
-    ['Cơm gà',    info.com_ga_days?.length > 0 ? info.com_ga_days.map(d => DAY_LABELS[d]).join(', ') : '—'],
-    ['Món ưu tiên', `${info.preferred_count} món`],
+    ['Tổng món viên',   `${info.vien_count}`],
+    ['Thịt bò',         info.beef_used   ? '✓ Có' : 'Không dùng'],
+    ['Tôm',             info.shrimp_used ? '✓ Có' : 'Không dùng'],
+    ['Cơm rang',        comRangText],
+    ['Cơm gà',          comGaText],
+    ['Món ưu tiên',     `${info.preferred_count} món`],
   ];
 
   rows.forEach(([label, value, cls]) => {
@@ -438,38 +516,39 @@ function renderStats() {
     body.appendChild(row);
   });
 
-  // Fried per day
-  if (info.fried_per_day) {
-    const fridayRow = document.createElement('div');
-    fridayRow.className = 'stat-row';
-    fridayRow.style.flexDirection = 'column';
-    fridayRow.style.gap = '4px';
+  // Món chiên theo tuần
+  if (info.fried_per_week) {
+    const weekRow = document.createElement('div');
+    weekRow.className = 'stat-row';
+    weekRow.style.flexDirection = 'column';
+    weekRow.style.gap = '4px';
     const lEl = document.createElement('span');
     lEl.className = 'stat-label';
-    lEl.textContent = 'Món chiên/ngày:';
-    fridayRow.appendChild(lEl);
-    DAYS.forEach(d => {
+    lEl.textContent = 'Món chiên/tuần:';
+    weekRow.appendChild(lEl);
+    WEEKS.forEach(wk => {
+      const count = info.fried_per_week[wk];
+      if (count == null) return;
       const sub = document.createElement('div');
-      sub.style.display = 'flex';
-      sub.style.justifyContent = 'space-between';
-      sub.style.fontSize = '10.5px';
+      sub.style.cssText = 'display:flex;justify-content:space-between;font-size:10.5px';
       const dl = document.createElement('span');
       dl.style.color = 'var(--txt2)';
-      dl.textContent = DAY_LABELS[d];
+      dl.textContent = WEEK_LABELS[wk];
       const dv = document.createElement('span');
       dv.style.fontWeight = '700';
-      dv.style.color = info.fried_per_day[d] >= 2 ? 'var(--err)' : 'var(--txt)';
-      dv.textContent = `${info.fried_per_day[d]} món`;
-      sub.appendChild(dl); sub.appendChild(dv);
-      fridayRow.appendChild(sub);
+      dv.style.color = count >= 8 ? 'var(--err)' : 'var(--txt)';
+      dv.textContent = `${count} món`;
+      sub.appendChild(dl);
+      sub.appendChild(dv);
+      weekRow.appendChild(sub);
     });
-    body.appendChild(fridayRow);
+    body.appendChild(weekRow);
   }
 }
 
 // ─── Render Alternatives (in modal) ──────────────────────────────────────────
 
-function renderAlternatives(alternatives, day, slot) {
+function renderAlternatives(alternatives, week, day, slot) {
   el.altList.replaceChildren();
 
   if (!alternatives || alternatives.length === 0) {
@@ -491,7 +570,7 @@ function renderAlternatives(alternatives, day, slot) {
 
     const name = document.createElement('div');
     name.className = 'alt-name';
-    name.textContent = alt.dish.name;     // safe: textContent
+    name.textContent = alt.dish.name;   // safe: textContent
 
     const sub = document.createElement('div');
     sub.className = 'alt-sub';
@@ -509,7 +588,6 @@ function renderAlternatives(alternatives, day, slot) {
     sub.appendChild(scoreSpan);
     sub.appendChild(violSpan);
 
-    // Tags
     const tags = buildTags(alt.dish, false);
     tags.style.marginTop = '4px';
 
@@ -525,7 +603,7 @@ function renderAlternatives(alternatives, day, slot) {
     card.appendChild(info);
     card.appendChild(arrow);
 
-    card.addEventListener('click', () => applyAlternative(alt.dish, day, slot));
+    card.addEventListener('click', () => applyAlternative(alt.dish, week, day, slot));
     el.altList.appendChild(card);
   });
 }
@@ -589,14 +667,14 @@ async function loadDataStats() {
     dl.replaceChildren();
 
     const items = [
-      ['Tổng số món', `${stats.total}`],
-      ['Món mặn (M)', `${stats.by_category?.M ?? '—'}`],
-      ['Món rau (R)', `${stats.by_category?.R ?? '—'}`],
-      ['Món canh (C)', `${stats.by_category?.C ?? '—'}`],
-      ['Cơm (CO)', `${stats.by_category?.CO ?? '—'}`],
+      ['Tổng số món',   `${stats.total}`],
+      ['Món mặn (M)',   `${stats.by_category?.M ?? '—'}`],
+      ['Món rau (R)',   `${stats.by_category?.R ?? '—'}`],
+      ['Món canh (C)',  `${stats.by_category?.C ?? '—'}`],
+      ['Cơm (CO)',      `${stats.by_category?.CO ?? '—'}`],
       ['Quà chiều (Q)', `${stats.by_category?.Q ?? '—'}`],
-      ['Món ưu tiên', `${stats.preferred_count ?? '—'}`],
-      ['Món chiên', `${stats.fried_count ?? '—'}`],
+      ['Món ưu tiên',   `${stats.preferred_count ?? '—'}`],
+      ['Món chiên',     `${stats.fried_count ?? '—'}`],
     ];
 
     items.forEach(([k, v]) => {
@@ -626,6 +704,12 @@ el.modalBg.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !el.modalBg.hidden) closeModal();
+});
+
+document.querySelectorAll('.week-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!btn.disabled) switchWeek(btn.dataset.week);
+  });
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────

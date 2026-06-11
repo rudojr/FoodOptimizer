@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FoodOptimizer – Tối ưu hóa thực đơn</title>
-  <meta name="description" content="Hệ thống tối ưu hóa thực đơn tuần 5 ngày bằng CP-SAT + Local Search (MPP)">
+  <meta name="description" content="Hệ thống tối ưu hóa thực đơn tháng (4 tuần × 5 ngày) bằng CP-SAT + Local Search (MPP)">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -28,7 +28,7 @@
           ⚡ Tối ưu hóa (COP)
         </button>
         <button class="btn btn-warning" id="btn-autorepair" type="button" disabled>
-          🔧 Sửa vi phạm (MPP)
+          🔧 Sửa tuần này (MPP)
         </button>
         <button class="btn btn-ghost" id="btn-print" type="button">
           🖨 In
@@ -64,12 +64,49 @@
     </aside>
 
     <!-- CENTER: Menu Table -->
-    <section class="menu-section" aria-label="Thực đơn tuần">
+    <section class="menu-section" aria-label="Thực đơn tháng">
       <!-- Solver Info Bar -->
       <div class="solver-bar" id="solver-bar" hidden>
         <span class="solver-status" id="solver-status"></span>
         <span class="solver-score" id="solver-score"></span>
         <span class="solver-time" id="solver-time"></span>
+      </div>
+
+      <!-- Settings Strip -->
+      <div class="settings-strip" id="settings-strip">
+        <div class="settings-group">
+          <label class="settings-label" for="rule-set-select">Bộ rule:</label>
+          <select class="settings-select" id="rule-set-select">
+            <option value="1" selected>Bộ 01</option>
+            <option value="2">Bộ 02</option>
+            <option value="3">Bộ 03</option>
+            <option value="4">Bộ 04</option>
+            <option value="5">Bộ 05</option>
+            <option value="6">Bộ 06</option>
+            <option value="7">Bộ 07</option>
+            <option value="8">Bộ 08</option>
+            <option value="9">Bộ 09</option>
+            <option value="10">Bộ 10</option>
+          </select>
+        </div>
+        <div class="settings-group">
+          <label class="settings-label" for="n-weeks-select">Số tuần:</label>
+          <select class="settings-select" id="n-weeks-select">
+            <option value="1">1 tuần</option>
+            <option value="2">2 tuần</option>
+            <option value="3">3 tuần</option>
+            <option value="4" selected>4 tuần</option>
+          </select>
+        </div>
+        <div class="settings-group">
+          <label class="settings-label" for="timeout-select">Timeout:</label>
+          <select class="settings-select" id="timeout-select">
+            <option value="10">10s</option>
+            <option value="20" selected>20s</option>
+            <option value="30">30s</option>
+            <option value="60">60s</option>
+          </select>
+        </div>
       </div>
 
       <!-- Legend -->
@@ -82,10 +119,18 @@
         <span class="leg"><i class="dot dot-Q"></i>Quà chiều</span>
       </div>
 
+      <!-- Week Navigation -->
+      <nav class="week-tabs" id="week-tabs" aria-label="Điều hướng tuần">
+        <button class="week-tab" data-week="w1" type="button" disabled>Tuần 1</button>
+        <button class="week-tab" data-week="w2" type="button" disabled>Tuần 2</button>
+        <button class="week-tab" data-week="w3" type="button" disabled>Tuần 3</button>
+        <button class="week-tab" data-week="w4" type="button" disabled>Tuần 4</button>
+      </nav>
+
       <!-- Menu Table -->
       <div class="table-wrap">
         <table class="menu-table" id="menu-table">
-          <caption class="sr-only">Thực đơn 5 ngày Thứ 2 đến Thứ 6</caption>
+          <caption class="sr-only">Thực đơn tháng – Thứ 2 đến Thứ 6</caption>
           <thead>
             <tr>
               <th class="th-cat" scope="col">Thành phần</th>

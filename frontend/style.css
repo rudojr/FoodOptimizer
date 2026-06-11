@@ -517,9 +517,70 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--txt3); }
 
+/* ── Settings Strip ── */
+.settings-strip {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 6px 12px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  font-size: 12px;
+}
+.settings-group { display: flex; align-items: center; gap: 6px; }
+.settings-label { color: var(--txt2); font-weight: 500; }
+.settings-select {
+  padding: 3px 8px;
+  border: 1px solid var(--border2);
+  border-radius: var(--rs);
+  font-family: inherit; font-size: 12px;
+  background: var(--bg-card); color: var(--txt);
+  cursor: pointer; transition: border-color var(--tr);
+}
+.settings-select:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+.settings-select:hover { border-color: var(--brand); }
+
+/* ── Week Tabs ── */
+.week-tabs {
+  display: flex; gap: 3px;
+  padding: 3px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  width: fit-content;
+}
+.week-tab {
+  position: relative;
+  padding: 5px 18px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--rs) - 1px);
+  font-family: inherit; font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all var(--tr);
+  background: transparent; color: var(--txt2);
+}
+.week-tab:hover:not(:disabled) { background: var(--bg-card); color: var(--txt); }
+.week-tab:disabled { opacity: .4; cursor: not-allowed; }
+.week-tab.active {
+  background: var(--bg-card);
+  color: var(--brand);
+  border-color: var(--border);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.week-tab-badge {
+  position: absolute; top: -5px; right: -5px;
+  background: var(--err); color: #fff;
+  font-size: 9px; font-weight: 700;
+  min-width: 15px; height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  display: grid; place-items: center;
+  pointer-events: none;
+}
+
 /* ── Print ── */
 @media print {
-  .header, .side-panel, #toast-area, .solver-bar, .legend, .edit-hint { display: none !important; }
+  .header, .side-panel, #toast-area, .solver-bar, .legend, .edit-hint,
+  .settings-strip, .week-tabs { display: none !important; }
   .layout { display: block !important; }
   .menu-section { padding: 0 !important; }
   .dish-card { border: 1px solid #e2e8f0 !important; background: #fafafa !important; }

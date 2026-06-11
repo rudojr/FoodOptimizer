@@ -210,7 +210,7 @@ def _build_dish(code: str, name: str,
 
 def load_dishes_from_excel(
     excel_path: str | Path,
-    sample_size: int = 100,
+    sample_size: int = 50,
 ) -> Dict[str, List[Dish]]:
     logger.info("Đang đọc %s ...", excel_path)
     wb = openpyxl.load_workbook(str(excel_path), read_only=True, data_only=True)
